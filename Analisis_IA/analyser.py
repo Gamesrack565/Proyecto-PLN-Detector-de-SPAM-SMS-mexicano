@@ -62,9 +62,10 @@ def resumir_spam_detectado(mensajes_spam):
     texto_mensajes = json.dumps(mensajes_spam, ensure_ascii=False, indent=2)
 
     prompt = f"""
-    Eres un experto en ciberseguridad. Los siguientes mensajes ya fueron clasificados como SPAM por un modelo de Machine Learning.
+    Eres un experto en detector de spam. Los siguientes mensajes ya fueron clasificados como SPAM por un modelo de Machine Learning.
     
-    Tu tarea es agrupar los mensajes que provengan del mismo 'remitente' o que traten sobre la misma estafa, y generar un 'resumenIa' corto advirtiendo al usuario de qué trata y agrega una explicacion corta sobre fraudes similares.
+    Tu tarea es agrupar los mensajes que provengan del mismo 'remitente', y generar un 'resumenIa' indicandole al usuario porque fueron marcados como SPAM y en caso del que mensaje tenga indicios de una estafa indicarselo. DEBER SER UN RESUMEN SUMAMENTE BREVE
+    En caso de que notes mensajes con codigos de acceso, solo le indicaras de que son y que verifique si realmente los ha solicitado
 
     IMPORTANTE: Tu respuesta debe ser ÚNICAMENTE un arreglo JSON válido con esta estructura exacta:
     [
@@ -122,28 +123,28 @@ def resumir_spam_detectado(mensajes_spam):
 
             # Si nos quedamos sin peticiones (Error de Cuota 429)
             except ResourceExhausted:
-                print(f"⚠️ Cuota agotada para la API Key {key_manager.current_index + 1}. Cambiando clave...")
+                print(f"ADVERTENCIA: Cuota agotada para la API Key {key_manager.current_index + 1}. Cambiando clave...")
                 key_manager.switch_key()
                 time.sleep(1) # Pausa breve para no saturar los servidores de Google
                 continue # Pasa a la siguiente clave (Bucle 2)
             
             # Si hay un error interno de Google o de conexión
             except InternalServerError:
-                print("⚠️ Error en los servidores de Google. Reintentando...")
+                print("ADVERTENCIA: Error en los servidores de Google. Reintentando...")
                 time.sleep(2)
                 continue
                 
             # Si hay un error de conversión JSON u otra falla crítica
             except json.JSONDecodeError as e:
-                print(f"❌ Error al decodificar JSON de Gemini: {e}")
+                print(f"ERROR: Al decodificar JSON de Gemini: {e}")
                 return []
             except Exception as e:
-                print(f"❌ Error inesperado: {str(e)}")
+                print(f"ERROR: Error inesperado: {str(e)}")
                 break # Rompe el ciclo de las claves y pasa al siguiente modelo
                 
-        print(f"❌ Se agotaron todas las claves para el modelo {nombre_modelo}.")
+        print(f"Advertencia: Se agotaron todas las claves para el modelo {nombre_modelo}.")
         # Si termina el bucle de claves, el código continúa y el Bucle 1 pasa al siguiente modelo
 
     # Si se agotan TODOS los modelos y TODAS las claves
-    print("🚨 FATAL ERROR: Se agotaron las cuotas de todos los modelos y claves.")
+    print("FATAL ERROR: Se agotaron las cuotas de todos los modelos y claves.")
     return []

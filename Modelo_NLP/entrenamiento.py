@@ -50,10 +50,16 @@ y = df['etiqueta']
 #AUN NO SE HACE EL APRENDIZAJE SOLO LO DIVIDIO
 X_entrenar, X_examen, y_entrenar, y_examen = train_test_split(X, y, test_size=0.2)
 
+print("\n--- Muestras de ENTRENAMIENTO (Primeros 3 mensajes) ---")
+print(X_entrenar.head(3))
+print("\n--- Muestras de EXAMEN (Primeros 3 mensajes) ---")
+print(X_examen.head(3))
+print("--------------------------------------------------\n")
+
 print("4. Vectorizando con TF-IDF...")
-#Bajamos a 800 palabras máximo para que no memorice todo el diccionario
-#Se reduce el rango de n-gramas a (1,1) para enfocarnos solo en palabras individuales y evitar combinaciones que podrían llevar a sobreajuste.
-#El parámetro min_df=1 asegura que se incluyan todas las palabras que aparecen al menos una vez, lo que es importante para un dataset pequeño y evitar eliminar palabras potencialmente útiles.
+#Usamos 2500 palabras mas relevantes para representar los mensajes, lo que ayuda a reducir la dimensionalidad y a enfocarnos en las palabras más significativas para la detección de spam.
+#Se reduce el rango de n-gramas a (1, 2) para enfocarnos solo en palabras individuales y pares de palabras, lo que es más relevante para la detección de spam y ayuda a evitar la sobreajuste
+#El parámetro min_df=2 asegura que se incluyan todas las palabras que aparecen al menos dos veces
 vectorizador = TfidfVectorizer(max_features=2500, min_df=2, ngram_range=(1, 2))
 
 #VECTORIZA LOS MENSAJES QUE FUERON ELEGIDOS PARA ENTRENAR Y PARA EXAMEN 

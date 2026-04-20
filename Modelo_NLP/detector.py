@@ -2,7 +2,7 @@ import pickle
 import spacy
 import re
 import os
-
+#python -m spacy download es_core_news_sm
 nlp = spacy.load("es_core_news_sm")
 stopwords = nlp.Defaults.stop_words
 
@@ -17,7 +17,9 @@ with open(os.path.join(BASE_DIR, "modelo_svm.pkl"), "rb") as f:
 
 def limpiar_texto(texto):
     texto = str(texto).lower()
-    texto = re.sub(r"http\S+|www\.\S+", " tokenurl ", texto)
+    #texto = re.sub(r"http\S+|www\.\S+", " tokenurl ", texto)
+    # En detector.py reemplaza la línea del http por esta:
+    texto = re.sub(r'(?:https?://\S+|(?:www\.)?bit\.ly/\S+|\b[\w.-]+\.(?:com|net|mx)\b(?:/\S*)?)', ' tokenurl ', texto)
     texto = re.sub(r"\S+@\S+\.\S+", " tokencorreo ", texto)
     texto = re.sub(r"\d+", " tokennumero ", texto)
     texto = re.sub(r"[@#]\w+", " ", texto)
