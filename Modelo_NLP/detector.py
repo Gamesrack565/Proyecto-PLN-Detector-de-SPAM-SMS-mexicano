@@ -1,46 +1,80 @@
 import pickle
 import spacy
 import re
+from scipy.sparse import hstack
+import numpy as np
 import os
-#python -m spacy download es_core_news_sm
+
 nlp = spacy.load("es_core_news_sm")
-stopwords = nlp.Defaults.stop_words
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 with open(os.path.join(BASE_DIR, "vectorizador.pkl"), "rb") as f:
     vectorizador = pickle.load(f)
 
-# Volvemos a cargar el modelo SVM
 with open(os.path.join(BASE_DIR, "modelo_svm.pkl"), "rb") as f:
     modelo_svm = pickle.load(f)
 
+
+# =========================
+# MISMA LIMPIEZA QUE ENTRENAMIENTO
+# =========================
 def limpiar_texto(texto):
     texto = str(texto).lower()
-    #texto = re.sub(r"http\S+|www\.\S+", " tokenurl ", texto)
-    # En detector.py reemplaza la línea del http por esta:
-    texto = re.sub(r'(?:https?://\S+|(?:www\.)?bit\.ly/\S+|\b[\w.-]+\.(?:com|net|mx)\b(?:/\S*)?)', ' tokenurl ', texto)
-    texto = re.sub(r"\S+@\S+\.\S+", " tokencorreo ", texto)
-    texto = re.sub(r"\d+", " tokennumero ", texto)
-    texto = re.sub(r"[@#]\w+", " ", texto)
-    texto = re.sub(r"[^\w\sáéíóúüñ]", " ", texto, flags=re.IGNORECASE)
-    
-    doc = nlp(texto)
-    lemas = []
-    for token in doc:
-        if not token.is_space and token.lemma_ not in stopwords:
-            lemas.append(token.lemma_)
-                
-    return " ".join(lemas)
 
+    texto = re.sub(r'(https?://\S+|www\.\S+)', ' tokenurl ', texto)
+    texto = re.sub(r"\S+@\S+\.\S+", " tokencorreo ", texto)
+
+    texto = re.sub(r"\b\d{5,}\b", " tokennumero_grande ", texto)
+    texto = re.sub(r"\b\d{2,4}\b", " tokennumero_medio ", texto)
+    texto = re.sub(r"\b\d\b", " tokennumero_pequeno ", texto)
+
+    texto = re.sub(r"[@#]\w+", " ", texto)
+    texto = re.sub(r"[^a-záéíóúüñ0-9!$ ]", " ", texto)
+
+    doc = nlp(texto)
+
+    tokens = []
+    for token in doc:
+        if not token.is_space:
+            tokens.append(token.text)
+
+    return " ".join(tokens)
+
+
+# =========================
+# MISMAS FEATURES
+# =========================
+def extraer_features(texto):
+    texto = str(texto)
+
+    longitud = len(texto)
+    num_palabras = len(texto.split())
+    num_numeros = len(re.findall(r'\d', texto))
+    num_urls = texto.count("tokenurl")
+    num_exclamaciones = texto.count("!")
+    num_dolar = texto.count("$")
+
+    return [longitud, num_palabras, num_numeros, num_urls, num_exclamaciones, num_dolar]
+
+
+# =========================
+# FUNCIÓN PRINCIPAL
+# =========================
 def detectar_spam(mensajes_dict_list):
     mensajes_spam = []
 
     for msg in mensajes_dict_list:
-        texto_limpio = limpiar_texto(msg['mensaje'])
-        vector = vectorizador.transform([texto_limpio])
-        # Usamos el modelo SVM
-        prediccion = modelo_svm.predict(vector)[0]
+        texto = msg.get("mensaje", "")
+
+        texto_limpio = limpiar_texto(texto)
+
+        tfidf = vectorizador.transform([texto_limpio])
+        features_extra = np.array([extraer_features(texto)])
+
+        vector_final = hstack([tfidf, features_extra])
+
+        prediccion = modelo_svm.predict(vector_final)[0]
 
         if prediccion == 'spam':
             mensajes_spam.append(msg)

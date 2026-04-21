@@ -6,7 +6,7 @@ from Analisis_IA import router as ai_router
 # Configuración de la aplicación FastAPI
 app = FastAPI(
     title="Detector de Spam - Backend",
-    version="1.0.0",
+    version="2.5.0",
     description="API para procesar SMS enviados desde Android y detectar Spam y resumen de IA."
 )
 

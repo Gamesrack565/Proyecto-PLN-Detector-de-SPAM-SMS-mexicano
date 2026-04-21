@@ -11,6 +11,13 @@ from Modelo_NLP import detector
 
 router = APIRouter()
 
+@router.get("/activo")
+async def check_activo():
+    """Endpoint para verificar que el servicio está activo y funcionando correctamente."""
+    return {"status": "activo"}
+
+
+
 @router.post("/clasificar-sms", response_model=List[schemas.GrupoSpamOutput])
 async def procesar_mensajes_sms(mensajes: List[schemas.SmsInput]):
     """

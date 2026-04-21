@@ -3,100 +3,212 @@ import spacy
 import re
 import pickle
 import os
+import numpy as np
+
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy.sparse import hstack
 
 print("1. Cargando el modelo de lenguaje de Spacy (español)...")
 nlp = spacy.load("es_core_news_sm")
-stopwords = nlp.Defaults.stop_words
 
-def limpiar_y_lematizar(texto):
+# =========================
+# LIMPIEZA MEJORADA
+# =========================
+def limpiar_texto(texto):
     texto = str(texto).lower()
-    
-    #Ya no eliminamos los números, sino que los reemplazamos por un token específico para que el modelo aprenda a reconocer su presencia sin memorizar cada número específico.
-    #texto = re.sub(r"http\S+|www\.\S+", " tokenurl ", texto)
-    #texto = re.sub(r"bit.ly\S+|/\S+", " tokenurl_bitly ", texto) 
-    texto = re.sub(r'(?:https?://\S+|(?:www\.)?bit\.ly/\S+|\b[\w.-]+\.(?:com|net|mx)\b(?:/\S*)?)', ' tokenurl ', texto)
-    texto = re.sub(r"\S+@\S+\.\S+", " tokencorreo ", texto)  
-    texto = re.sub(r"\d+", " tokennumero ", texto)           
+
+    # URLs
+    texto = re.sub(r'(https?://\S+|www\.\S+)', ' tokenurl ', texto)
+
+    # Correos
+    texto = re.sub(r"\S+@\S+\.\S+", " tokencorreo ", texto)
+
+    # Números por rangos (mejor que uno solo)
+    texto = re.sub(r"\b\d{5,}\b", " tokennumero_grande ", texto)
+    texto = re.sub(r"\b\d{2,4}\b", " tokennumero_medio ", texto)
+    texto = re.sub(r"\b\d\b", " tokennumero_pequeno ", texto)
+
+    # Menciones
     texto = re.sub(r"[@#]\w+", " ", texto)
-    texto = re.sub(r"[^\w\sáéíóúüñ]", " ", texto, flags=re.IGNORECASE)
-    
+
+    # Mantener solo letras, números y signos útiles
+    texto = re.sub(r"[^a-záéíóúüñ0-9!$ ]", " ", texto)
+
     doc = nlp(texto)
-    lemas = []
+
+    tokens = []
     for token in doc:
-        if not token.is_space and token.lemma_ not in stopwords:
-            lemas.append(token.lemma_)
-                
-    return " ".join(lemas)
+        if not token.is_space:
+            tokens.append(token.text)
+
+    return " ".join(tokens)
+
+
+# =========================
+# FEATURES ADICIONALES
+# =========================
+def extraer_features(texto):
+    texto = str(texto)
+
+    longitud = len(texto)
+    num_palabras = len(texto.split())
+    num_numeros = len(re.findall(r'\d', texto))
+    num_urls = texto.count("tokenurl")
+    num_exclamaciones = texto.count("!")
+    num_dolar = texto.count("$")
+
+    return [longitud, num_palabras, num_numeros, num_urls, num_exclamaciones, num_dolar]
+
 
 print("2. Leyendo el dataset...")
-#Dataset actualizado con mensajes traducidos a español y mensajes enfocados en mexico
 ruta_csv = "datos/spam_espanol.csv"
 df = pd.read_csv(ruta_csv)
-#Eliminamos filas con mensajes o etiquetas vacías para evitar problemas en el entrenamiento
+
 df = df.dropna(subset=['mensaje', 'etiqueta'])
 
+print(f"3. Limpiando {len(df)} mensajes...")
+df['mensaje_limpio'] = df['mensaje'].apply(limpiar_texto)
 
-print(f"3. Limpiando y lematizando {len(df)} mensajes...")
-#Se realiza el proceso de limpieza y lematización en la columna 'mensaje' y se guarda el resultado en una nueva columna 'mensaje_limpio' para mantener el original intacto.
-df['mensaje_limpio'] = df['mensaje'].apply(limpiar_y_lematizar)
+# Eliminar vacíos
+df = df[df['mensaje_limpio'].str.strip() != ""]
+
+print("=== ANÁLISIS DE DUPLICADOS ===")
+print(f"Mensajes totales: {len(df)}")
+
+duplicados = df.duplicated(subset=['mensaje_limpio']).sum()
+print(f"Duplicados exactos: {duplicados}")
+
+# Eliminar duplicados exactos
+df = df.drop_duplicates(subset=['mensaje_limpio'])
+
+# =========================
+# ELIMINAR DUPLICADOS SEMÁNTICOS
+# =========================
+print("Eliminando duplicados semánticos (esto puede tardar)...")
+
+vector_temp = TfidfVectorizer(max_features=3000)
+X_temp = vector_temp.fit_transform(df['mensaje_limpio'])
+
+sim_matrix = cosine_similarity(X_temp)
+
+to_remove = set()
+threshold = 0.90
+
+for i in range(sim_matrix.shape[0]):
+    for j in range(i + 1, sim_matrix.shape[1]):
+        if sim_matrix[i, j] > threshold:
+            to_remove.add(j)
+
+df = df.drop(df.index[list(to_remove)])
+
+print(f"Mensajes después de eliminar duplicados semánticos: {len(df)}")
+
+# =========================
+# PREPARACIÓN
+# =========================
 X = df['mensaje_limpio']
 y = df['etiqueta']
 
-#Dividimos el dataset en entrenamiento y examen (80% entrenamiento, 20% examen)
-#AUN NO SE HACE EL APRENDIZAJE SOLO LO DIVIDIO
-X_entrenar, X_examen, y_entrenar, y_examen = train_test_split(X, y, test_size=0.2)
+# Features adicionales
+features_extra = np.array([extraer_features(t) for t in df['mensaje']])
 
-print("\n--- Muestras de ENTRENAMIENTO (Primeros 3 mensajes) ---")
+# Split
+X_entrenar, X_examen, y_entrenar, y_examen, feat_train, feat_test = train_test_split(
+    X, y, features_extra, test_size=0.2, stratify=y
+)
+
+print("\n--- Muestras de ENTRENAMIENTO ---")
 print(X_entrenar.head(3))
-print("\n--- Muestras de EXAMEN (Primeros 3 mensajes) ---")
+
+print("\n--- Muestras de EXAMEN ---")
 print(X_examen.head(3))
-print("--------------------------------------------------\n")
 
+# =========================
+# TF-IDF MEJORADO
+# =========================
 print("4. Vectorizando con TF-IDF...")
-#Usamos 2500 palabras mas relevantes para representar los mensajes, lo que ayuda a reducir la dimensionalidad y a enfocarnos en las palabras más significativas para la detección de spam.
-#Se reduce el rango de n-gramas a (1, 2) para enfocarnos solo en palabras individuales y pares de palabras, lo que es más relevante para la detección de spam y ayuda a evitar la sobreajuste
-#El parámetro min_df=2 asegura que se incluyan todas las palabras que aparecen al menos dos veces
-vectorizador = TfidfVectorizer(max_features=2500, min_df=2, ngram_range=(1, 2))
 
-#VECTORIZA LOS MENSAJES QUE FUERON ELEGIDOS PARA ENTRENAR Y PARA EXAMEN 
+vectorizador = TfidfVectorizer(
+    max_features=5000,
+    min_df=2,
+    max_df=0.9,
+    ngram_range=(1, 3)
+)
+
 X_entrenar_tfidf = vectorizador.fit_transform(X_entrenar)
 X_examen_tfidf = vectorizador.transform(X_examen)
 
+# Combinar con features manuales
+X_entrenar_final = hstack([X_entrenar_tfidf, feat_train])
+X_examen_final = hstack([X_examen_tfidf, feat_test])
+
+# =========================
+# MODELO (SIN CAMBIOS)
+# =========================
 print("5. Entrenando el SVM...")
-#Preparacion de entrenamiento del modelo SVM con kernel lineal, regularización C=0.1, probabilidad habilitada para obtener scores de confianza, y class_weight='balanced' para manejar cualquier desequilibrio en las clases.
-modelo_svm = SVC(kernel='linear', C=0.1, probability=True, class_weight='balanced')
-#Ingreso de variables para el modelo
-modelo_svm.fit(X_entrenar_tfidf, y_entrenar)
 
+modelo_svm = SVC(kernel='linear', C=1, probability=True, class_weight='balanced')
+modelo_svm.fit(X_entrenar_final, y_entrenar)
 
-# Evaluando entrenamiento vs examen
-y_pred_entrenar = modelo_svm.predict(X_entrenar_tfidf)
+# =========================
+# EVALUACIÓN
+# =========================
+y_pred_entrenar = modelo_svm.predict(X_entrenar_final)
 precision_entrenar = accuracy_score(y_entrenar, y_pred_entrenar)
+
 print(f"Precisión en Entrenamiento: {precision_entrenar * 100:.2f}%")
 
-
 print("6. Evaluando el modelo...")
-#Proceso de evaluacion del modelo utilizando el conjunto de examen. Se predicen las etiquetas para los mensajes de examen y se calcula la precisión general, así como un reporte detallado de clasificación que incluye métricas como precisión, recall y F1-score para cada clase.
-y_pred = modelo_svm.predict(X_examen_tfidf)
-#Se obtiene la precision general del modelo 
+
+y_pred = modelo_svm.predict(X_examen_final)
 precision = accuracy_score(y_examen, y_pred)
+
 print(f"\n¡Precisión general: {precision * 100:.2f}%\n")
-print("Reporte detallado de clasificación:")
+
+print("Reporte detallado:")
 print(classification_report(y_examen, y_pred))
 
-print(f"\n BRECHA DE PRECISIÓN ENTRE ENTRENAMIENTO Y EXAMEN: {(precision_entrenar - precision) * 100:.2f}%")
+# MATRIZ DE CONFUSIÓN
+print("Matriz de confusión:")
+print(confusion_matrix(y_examen, y_pred))
 
+print(f"\nBrecha: {(precision_entrenar - precision) * 100:.2f}%")
+
+# =========================
+# ANÁLISIS DE ERRORES
+# =========================
+print("\n--- ERRORES IMPORTANTES ---")
+
+errores = pd.DataFrame({
+    "texto": X_examen,
+    "real": y_examen,
+    "pred": y_pred
+})
+
+errores = errores[errores["real"] != errores["pred"]]
+
+print("\nFalsos negativos (spam detectado como ham):")
+print(errores[(errores["real"] == "spam") & (errores["pred"] == "ham")].head(5))
+
+print("\nFalsos positivos (ham detectado como spam):")
+print(errores[(errores["real"] == "ham") & (errores["pred"] == "spam")].head(5))
+
+# =========================
+# GUARDADO
+# =========================
 print("7. Guardando...")
+
 carpeta_modelo = "Modelo_NLP"
 os.makedirs(carpeta_modelo, exist_ok=True)
+
 with open(f"{carpeta_modelo}/vectorizador.pkl", "wb") as f:
     pickle.dump(vectorizador, f)
 
 with open(f"{carpeta_modelo}/modelo_svm.pkl", "wb") as f:
     pickle.dump(modelo_svm, f)
 
-print("Archivos actualizados correctamente.")
+print("Modelo guardado correctamente.")
