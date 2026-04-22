@@ -46,9 +46,39 @@ df['mensaje_limpio'] = df['mensaje'].apply(limpiar_y_lematizar)
 X = df['mensaje_limpio']
 y = df['etiqueta']
 
+
+df = df[df['mensaje_limpio'].str.strip() != ""]
+
+
+print("=== ANÁLISIS DE DUPLICADOS ===")
+print(f"Mensajes totales originales: {len(df)}")
+
+cantidad_duplicados = df.duplicated(subset=['mensaje_limpio']).sum()
+print(f"Se encontraron {cantidad_duplicados} mensajes duplicados.")
+
+if cantidad_duplicados > 0:
+    print("\nEjemplo de mensajes duplicados (mostrando 2 copias):")
+    duplicados_ejemplo = df[df.duplicated(subset=['mensaje_limpio'], keep=False)].sort_values(by='mensaje_limpio')
+    print(duplicados_ejemplo[['etiqueta', 'mensaje_limpio']].head(400))
+
+#4. ELIMINAR LOS DUPLICADOS EN EL DATAFRAME
+
+df = df.drop_duplicates(subset=['mensaje_limpio'], keep='first')
+
+#5. ¡¡CRÍTICO!! REASIGNAR X e y DESPUÉS DE LIMPIAR
+
+X = df['mensaje_limpio']
+y = df['etiqueta']
+
+print(f"\nMensajes totales después de limpiar: {len(df)}")
+print("==============================\n")
+
+
+
+
 #Dividimos el dataset en entrenamiento y examen (80% entrenamiento, 20% examen)
 #AUN NO SE HACE EL APRENDIZAJE SOLO LO DIVIDIO
-X_entrenar, X_examen, y_entrenar, y_examen = train_test_split(X, y, test_size=0.2)
+X_entrenar, X_examen, y_entrenar, y_examen = train_test_split(X, y, test_size=0.2, stratify=y)
 
 print("\n--- Muestras de ENTRENAMIENTO (Primeros 3 mensajes) ---")
 print(X_entrenar.head(3))
