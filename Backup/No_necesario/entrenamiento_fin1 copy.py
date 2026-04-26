@@ -14,23 +14,31 @@ from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from scipy.sparse import hstack
 
+#Cargando el modelo de lenguaje de Spacy para español
 print("1. Cargando el modelo de lenguaje de Spacy (español)...")
 nlp = spacy.load("es_core_news_sm")
 
+#Proceso de limpieza de texto
 def limpiar_texto(texto):
+
     texto = str(texto).lower()
     texto = re.sub(r'(https?://\S+|www\.\S+)', ' tokenurl ', texto)
     texto = re.sub(r"\S+@\S+\.\S+", " tokencorreo ", texto)
     texto = re.sub(r"\b\d{5,}\b", " tokennumero_grande ", texto)
     texto = re.sub(r"\b\d{2,4}\b", " tokennumero_medio ", texto)
     texto = re.sub(r"\b\d\b", " tokennumero_pequeno ", texto)
-    texto = re.sub(r"[@#]\w+", " ", texto)
+    #texto = re.sub(r"[@#]\w+", " ", texto)
+    #ACTUALIZADO: En lugar de eliminar completamente las palabras que comienzan con @ o #, solo eliminamos los símbolos pero mantenemos las palabras.
+    #Solo borra los símbolos @ y #, pero deja las palabras intactas
+    texto = re.sub(r"[@#]", " ", texto)
     texto = re.sub(r"[^a-záéíóúüñ0-9!$ ]", " ", texto)
     doc = nlp(texto)
-    # Agregamos 'and not token.is_stop' para filtrar las palabras vacías
+    #Agregamos 'and not token.is_stop' para filtrar las palabras vacías
     tokens = [token.text for token in doc if not token.is_space and not token.is_stop]
     return " ".join(tokens)
 
+#Función para extraer características manuales del mensaje original (antes de limpiar)
+#Esto lo usamos para capturar información que podría perderse en la limpieza, como la presencia de URLs, números, signos de exclamación, etc.
 def extraer_features(texto):
     texto = str(texto)
     longitud = len(texto)
@@ -44,17 +52,24 @@ def extraer_features(texto):
 # ──────────────────────────────────────────────────────────────────────────────
 # CORRECCIÓN 1: Eliminar duplicados ANTES de todo, usando el mensaje original
 # ──────────────────────────────────────────────────────────────────────────────
+
+#LECTURA DEL DATASET
 print("2. Leyendo el dataset...")
-ruta_csv = "datos/spam_espanol.csv"       # <-- ajusta la ruta según tu proyecto
+ruta_csv = "datos/dataset_spam_modelo.csv" 
 df = pd.read_csv(ruta_csv)
+#Obtenemos solo las columnas necesarias y renombramos para mayor claridad
 df = df.dropna(subset=['mensaje', 'etiqueta'])
 
+#Calculamos y mostramos estadísticas de duplicados antes de eliminar
+#Mensajes totales
 print(f"Mensajes totales: {len(df)}")
+#Calculo de duplicados exactos
 duplicados_exactos = df.duplicated(subset=['mensaje']).sum()
 print(f"Duplicados exactos: {duplicados_exactos}")
 
-# Eliminamos duplicados exactos por mensaje original (antes de limpiar)
+#Eliminamos duplicados exactos por mensaje original (antes de limpiar)
 df = df.drop_duplicates(subset=['mensaje'])
+#Calculamos y mostramos estadísticas después de eliminar duplicados exactos
 print(f"Mensajes después de eliminar duplicados exactos: {len(df)}")
 print(df['etiqueta'].value_counts())
 
@@ -63,20 +78,25 @@ print(df['etiqueta'].value_counts())
 # transformación que use todo el dataset (limpieza, TF-IDF, similitud coseno).
 # Así el conjunto de prueba nunca "contamina" al de entrenamiento.
 # ──────────────────────────────────────────────────────────────────────────────
+
+
 print("\n3. Dividiendo el dataset en entrenamiento y prueba ANTES de procesar...")
-X_raw = df['mensaje']
+X__etiqueta = df['mensaje']
 y = df['etiqueta']
 
+#Division del dataset en entrenamiento y prueba, con estratificación para mantener la proporción de clases
+#Se utiliza 80/20 para entrenamiento/prueba
 X_entrenar_raw, X_examen_raw, y_entrenar, y_examen = train_test_split(
-    X_raw, y, test_size=0.2, stratify=y
+    X__etiqueta, y, test_size=0.2, stratify=y
 )
-
+#Se imprimen las cantidades de mensajes en cada partición para verificar la division
 print(f"Entrenamiento: {len(X_entrenar_raw)} mensajes")
 print(f"Prueba:        {len(X_examen_raw)} mensajes")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Limpieza: se aplica por separado a cada partición
 # ──────────────────────────────────────────────────────────────────────────────
+
 print(f"\n4. Limpiando mensajes de entrenamiento ({len(X_entrenar_raw)})...")
 X_entrenar = X_entrenar_raw.apply(limpiar_texto)
 
@@ -94,14 +114,7 @@ X_examen = X_examen[mascara_test]
 y_examen = y_examen[mascara_test]
 X_examen_raw = X_examen_raw[mascara_test]
 
-# ──────────────────────────────────────────────────────────────────────────────
-# NOTA SOBRE DUPLICADOS SEMÁNTICOS:
-# Se elimina el bloque de similitud coseno global que existía en el código
-# original porque calculaba la similitud sobre TODOS los datos antes del split,
-# lo que causaba fuga de información (data leakage). Si deseas eliminar
-# duplicados semánticos del conjunto de entrenamiento, hazlo aquí — SOLO sobre
-# X_entrenar — y nunca toques X_examen.
-# ──────────────────────────────────────────────────────────────────────────────
+
 
 # Features manuales (calculadas sobre el mensaje original, no el limpio)
 feat_train = np.array([extraer_features(t) for t in X_entrenar_raw])
@@ -114,7 +127,7 @@ print("\n5. Vectorizando con TF-IDF...")
 vectorizador = TfidfVectorizer(
     max_features=5000,
     min_df=2,
-    max_df=0.9,
+    #max_df=0.9,
     ngram_range=(1, 3)
 )
 
@@ -128,7 +141,7 @@ X_examen_final   = hstack([X_examen_tfidf,   feat_test])
 # Entrenamiento del SVM
 # ──────────────────────────────────────────────────────────────────────────────
 print("\n6. Entrenando el SVM...")
-modelo_svm = SVC(kernel='linear', C=1, probability=True, class_weight='balanced')
+modelo_svm = SVC(kernel='linear', C=1.0, probability=True, class_weight='balanced')
 modelo_svm.fit(X_entrenar_final, y_entrenar)
 
 y_pred_entrenar = modelo_svm.predict(X_entrenar_final)
@@ -149,7 +162,7 @@ print(confusion_matrix(y_examen, y_pred))
 brecha = (precision_entrenar - precision) * 100
 print(f"\nBrecha entrenamiento/prueba: {brecha:.2f}%")
 if brecha > 10:
-    print("⚠  Brecha alta — posible sobreajuste.")
+    print("X  Brecha alta — posible sobreajuste.")
 else:
     print("✓  Brecha razonable.")
 

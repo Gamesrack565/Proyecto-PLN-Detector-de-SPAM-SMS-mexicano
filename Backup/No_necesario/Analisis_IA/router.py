@@ -3,11 +3,13 @@ from typing import List
 import sys
 import os
 
-from . import schemas, analyser
+from ...Analisis_IA import analyser
+
+from ...Analisis_IA import schemas
 
 # Para poder importar la carpeta Modelo_NLP que está al mismo nivel
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from Modelo_NLP import detector
+from Backup.No_necesario import detector
 
 router = APIRouter()
 

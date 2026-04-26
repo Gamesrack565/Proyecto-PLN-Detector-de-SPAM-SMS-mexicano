@@ -2,6 +2,8 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from Analisis_IA import router as ai_router
+from Analisis_IA import analyser
+from Modelo_NLP import detector
 
 # Configuración de la aplicación FastAPI
 app = FastAPI(
