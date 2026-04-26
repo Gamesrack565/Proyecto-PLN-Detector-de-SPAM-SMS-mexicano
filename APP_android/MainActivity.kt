@@ -725,7 +725,7 @@ fun TarjetaGrupoSpamExpansible(grupo: GrupoSpam, colorAcento: Color) {
 }
 
 // ==========================================
-// PANTALLA DE AJUSTES REFACTORIZADA (BLUE TEAM / RED TEAM)
+// PANTALLA DE AJUSTES REFACTORIZADA
 // ==========================================
 @Composable
 fun PantallaAjustes(
@@ -742,7 +742,7 @@ fun PantallaAjustes(
     Crossfade(targetState = modoDesarrollador, animationSpec = tween(400)) { esModoDev ->
         if (esModoDev) {
             // ===============================================
-            // VISTA DESARROLLADOR (TEMA ROJO - RED TEAM)
+            // VISTA DESARROLLADOR
             // ===============================================
             val redPrimario = Color(0xFFC62828)
 
