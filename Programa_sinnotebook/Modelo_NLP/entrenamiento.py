@@ -45,6 +45,17 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 #hstack: De SciPy, permite apilar matrices dispersas de forma horizontal. Es la herramienta adecuada si en el futuro necesitamos combinar la matriz de texto generada por TF-IDF con otras características numéricas extraídas manualmente (como la longitud del mensaje o conteo de mayúsculas) antes de pasarlas al modelo.
 from scipy.sparse import hstack
 
+
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.decomposition import TruncatedSVD
+from sklearn.svm import SVC
+import seaborn as sns
+
+
 #Cargando el modelo de lenguaje de Spacy para español
 print("1. Cargando el modelo de lenguaje de Spacy (español)...")
 nlp = spacy.load("es_core_news_sm")
@@ -94,8 +105,9 @@ def extraer_features(texto):
     return [longitud, num_palabras, num_numeros, num_urls, num_exclamaciones, num_dolar]
 
 
-#LECTURA DEL DATASET
-print("2. Leyendo el dataset...")
+#LECTURA DEL CONJUNTO DE DATOS
+print("2. Leyendo el conjunto de datos...")
+#Ruta asignada de manera local.
 ruta_csv = "datos/dataset_spam_modelo.csv" 
 df = pd.read_csv(ruta_csv)
 #Obtenemos solo las columnas necesarias y renombramos para mayor claridad
